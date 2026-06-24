@@ -1,54 +1,89 @@
 import cv2
 import numpy as np
 
-# Open the image files.
-img1_color = cv2.imread("align.jpg")  # Image to be aligned.
-img2_color = cv2.imread("ref.jpg")    # Reference image.
+# Cargar imágenes
+img1_color = cv2.imread("data/align.jpeg")  # Imagen desalineada
+img2_color = cv2.imread("data/ref.jpeg")    # Imagen de referencia
 
-# Convert to grayscale.
+# Verificar carga
+if img1_color is None:
+    print("Error: No se pudo cargar data/align.jpeg")
+    exit()
+
+if img2_color is None:
+    print("Error: No se pudo cargar data/ref.jpeg")
+    exit()
+
+# Convertir a escala de grises
 img1 = cv2.cvtColor(img1_color, cv2.COLOR_BGR2GRAY)
 img2 = cv2.cvtColor(img2_color, cv2.COLOR_BGR2GRAY)
+
 height, width = img2.shape
 
-# Create ORB detector with 5000 features.
+# Crear detector ORB
 orb_detector = cv2.ORB_create(5000)
 
-# Find keypoints and descriptors.
-# The first arg is the image, second arg is the mask
-#  (which is not required in this case).
+# Detectar puntos clave y descriptores
 kp1, d1 = orb_detector.detectAndCompute(img1, None)
 kp2, d2 = orb_detector.detectAndCompute(img2, None)
 
-# Match features between the two images.
-# We create a Brute Force matcher with 
-# Hamming distance as measurement mode.
-matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck = True)
+# Verificar que se encontraron características
+if d1 is None or d2 is None:
+    print("Error: No se encontraron suficientes características ORB.")
+    exit()
 
-# Match the two sets of descriptors.
-matches = matcher.match(d1, d2)
+# Emparejamiento
+matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
-# Sort matches on the basis of their Hamming distance.
-matches.sort(key = lambda x: x.distance)
+# Convertir a lista para evitar error de OpenCV 4.13
+matches = list(matcher.match(d1, d2))
 
-# Take the top 90 % matches forward.
-matches = matches[:int(len(matches)*0.9)]
+# Verificar matches
+if len(matches) < 4:
+    print("Error: No hay suficientes coincidencias.")
+    exit()
+
+# Ordenar coincidencias
+matches = sorted(matches, key=lambda x: x.distance)
+
+# Tomar el 90% de las mejores
+matches = matches[:int(len(matches) * 0.9)]
+
 no_of_matches = len(matches)
 
-# Define empty matrices of shape no_of_matches * 2.
+print("Número de matches:", no_of_matches)
+
+# Crear matrices de puntos
 p1 = np.zeros((no_of_matches, 2))
 p2 = np.zeros((no_of_matches, 2))
 
-for i in range(len(matches)):
-  p1[i, :] = kp1[matches[i].queryIdx].pt
-  p2[i, :] = kp2[matches[i].trainIdx].pt
+for i in range(no_of_matches):
+    p1[i, :] = kp1[matches[i].queryIdx].pt
+    p2[i, :] = kp2[matches[i].trainIdx].pt
 
-# Find the homography matrix.
+# Calcular homografía
 homography, mask = cv2.findHomography(p1, p2, cv2.RANSAC)
 
-# Use this matrix to transform the
-# colored image wrt the reference image.
-transformed_img = cv2.warpPerspective(img1_color,
-                    homography, (width, height))
+if homography is None:
+    print("Error: No se pudo calcular la homografía.")
+    exit()
 
-# Save the output.
-cv2.imwrite('output.jpg', transformed_img)
+# Corregir perspectiva
+transformed_img = cv2.warpPerspective(
+    img1_color,
+    homography,
+    (width, height)
+)
+
+# Guardar resultado
+cv2.imwrite("data/output.jpg", transformed_img)
+
+print("Imagen corregida guardada en data/output.jpg")
+
+# Mostrar imágenes
+cv2.imshow("Referencia", img2_color)
+cv2.imshow("Desalineada", img1_color)
+cv2.imshow("Corregida", transformed_img)
+
+cv2.waitKey(0)
+cv2.destroyAllWindows()
